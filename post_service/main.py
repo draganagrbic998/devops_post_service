@@ -145,8 +145,73 @@ class PostResponse(BaseModel):
     opinion: str = Field(description='User opinion')
 
 
+class Comment(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    profile_id: int = Field(description='Profile ID')
+    author: str = Field(description='Comment author')
+    post_id: str = Field(description='Post ID')
+    text: str = Field(...)
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "profile_id": "1",
+                "post_id": "000000000000000000000001",
+                "text": "Neki text."
+            }
+        }
+
+
+class CommentResponse(BaseModel):
+    id: str = Field(...)
+    profile_id: int = Field(description='Profile ID')
+    author: str = Field(description='Comment author')
+    post_id: str = Field(description='Post ID')
+    text: str = Field(...)
+
+
+class Like(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    profile_id: int = Field(description='Profile ID')
+    post_id: str = Field(description='Post ID')
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "profile_id": "1",
+                "post_id": "000000000000000000000001",
+            }
+        }
+
+
+class Dislike(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    profile_id: int = Field(description='Profile ID')
+    post_id: str = Field(description='Post ID')
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "profile_id": "1",
+                "post_id": "000000000000000000000001",
+            }
+        }
+
+
 class NavigationLinksPost(BaseModel):
     base: str = Field('http://localhost:8010/api/posts', description='API base URL')
+    prev: Optional[str] = Field(None, description='Link to the previous page')
+    next: Optional[str] = Field(None, description='Link to the next page')
+
+
+class NavigationLinksComment(BaseModel):
+    base: str = Field('http://localhost:8010/api/comments', description='API base URL')
     prev: Optional[str] = Field(None, description='Link to the previous page')
     next: Optional[str] = Field(None, description='Link to the next page')
 
@@ -154,6 +219,20 @@ class NavigationLinksPost(BaseModel):
 class ResponsePost(BaseModel):
     results: List[PostResponse]
     links: NavigationLinksPost
+    offset: int
+    limit: int
+    size: int
+    
+    
+class ResponseStats(BaseModel):
+    likes: int
+    dislikes: int
+    opinion: str
+
+
+class ResponseComment(BaseModel):
+    results: List[CommentResponse]
+    links: NavigationLinksComment
     offset: int
     limit: int
     size: int
@@ -245,6 +324,39 @@ def get_posts_mine(offset: int = 0, limit: int = 7, profile_id: int = -1):
     return results, links  
 
 
+def get_comments(offset: int = 0, limit: int = 7, post_id: str = '0', link: str = 'comments'):
+    total_comments = len(list(comment_col.find({"post_id": post_id})))
+    comments = list(comment_col.find({"post_id": post_id}).skip(offset).limit(limit))
+
+    prev_link = f'/{link}/{post_id}?offset={offset - limit}&limit={limit}' if offset - limit >= 0 else None
+    next_link = f'/{link}/{post_id}?offset={offset + limit}&limit={limit}' if offset + limit < total_comments else None
+    links = NavigationLinksComment(prev=prev_link, next=next_link)
+
+    results = []
+
+    for c in comments:
+        results.append(CommentResponse(id=str(c["_id"]), text=c["text"], profile_id=c["profile_id"], post_id=c["post_id"], author=c["author"]))
+
+    return results, links    
+
+
+@app.post(POSTS_URL, response_description="Create new post")
+def create_post(request: Request, post: Post = Body(...)):
+    with app.tracer.start_span('Create Post Request') as span:
+        try:
+            span.set_tag('http_method', 'POST')
+            
+            post.profile_id = get_current_user_id(request)
+            post_col.insert_one(jsonable_encoder(post))
+            
+            kafka_producer.send(KAFKA_NOTIFICATIONS_TOPIC, {'type': 'post', 'user_id': post.profile_id, 'message': 'New post from ' + get_current_user_username(request)})            
+            record_action(200, 'Request successful', span)
+            record_event('Post Created', json_util.dumps(post))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
 @app.get(POSTS_URL + "/{profile_id}", response_description="List all posts")
 def list_posts(request: Request, offset: int = Query(0), limit: int = Query(7), profile_id: int = -1):
     with app.tracer.start_span('List Posts Request') as span:
@@ -285,6 +397,164 @@ def list_posts_mine(request: Request, offset: int = Query(0), limit: int = Query
 
             record_action(200, 'Request successful', span)
             return ResponsePost(results=results, links=links, offset=offset, limit=limit, size=len(results))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.post(COMMENTS_URL, response_description="Create new comment")
+def create_comment(request: Request, comment: Comment = Body(...)):
+    with app.tracer.start_span('Create Comment Request') as span:
+        try:
+            span.set_tag('http_method', 'POST')
+
+            comment.profile_id = get_current_user_id(request)
+            comment_col.insert_one(jsonable_encoder(comment))
+
+            record_action(200, 'Request successful', span)
+            record_event('Comment Created', json_util.dumps(comment))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.get(COMMENTS_URL + "/{post_id}", response_description="List all comments")
+def list_comments(request: Request, offset: int = Query(0), limit: int = Query(7), post_id: str = "0"):
+    with app.tracer.start_span('List Comments Request') as span:
+        try:
+            span.set_tag('http_method', 'GET')
+
+            results, links = get_comments(offset, limit, post_id)
+
+            record_action(200, 'Request successful', span)
+            return ResponseComment(results=results, links=links, offset=offset, limit=limit, size=len(results))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.get(COMMENTS_URL + "/public/{post_id}", response_description="List all public comments")
+def list_comments_public(request: Request, offset: int = Query(0), limit: int = Query(7), post_id: str = "0"):
+    with app.tracer.start_span('List Public Comments Request') as span:
+        try:
+            span.set_tag('http_method', 'GET')
+
+            results, links = get_comments(offset, limit, post_id, 'comments/public')
+            
+            record_action(200, 'Request successful', span)
+            return ResponseComment(results=results, links=links, offset=offset, limit=limit, size=len(results))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.post(POSTS_URL + "/like", response_description="Create new like")
+def create_like(request: Request, like: Like = Body(...)):
+    with app.tracer.start_span('Create Like Request') as span:
+        try:
+            span.set_tag('http_method', 'POST')
+
+            like.profile_id = get_current_user_id(request)
+
+            if len(list(like_col.find({"$and": [{"profile_id": like.profile_id}, {"post_id": like.post_id}]}))) == 0:
+                like_col.insert_one(jsonable_encoder(like))
+            
+                if len(list(dislike_col.find({"$and": [{"profile_id": like.profile_id}, {"post_id": like.post_id}]}))) != 0:
+                    dislike_col.delete_one({"$and": [{"profile_id": like.profile_id}, {"post_id": like.post_id}]})
+
+            record_action(200, 'Request successful', span)
+            record_event('Like Created', json_util.dumps(like))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.post(POSTS_URL + "/dislike", response_description="Create new dislike")
+def create_dislike(request: Request, dislike: Dislike = Body(...)):
+    with app.tracer.start_span('Create Dislike Request') as span:
+        try:
+            span.set_tag('http_method', 'POST')
+
+            dislike.profile_id = get_current_user_id(request)
+
+            if len(list(dislike_col.find({"$and": [{"profile_id": dislike.profile_id}, {"post_id": dislike.post_id}]}))) == 0:
+                dislike_col.insert_one(jsonable_encoder(dislike))
+            
+                if len(list(like_col.find({"$and": [{"profile_id": dislike.profile_id}, {"post_id": dislike.post_id}]}))) != 0:
+                    like_col.delete_one({"$and": [{"profile_id": dislike.profile_id}, {"post_id": dislike.post_id}]})
+
+            record_action(200, 'Request successful', span)
+            record_event('Dislike Created', json_util.dumps(dislike))
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.delete(POSTS_URL + "/neither/{post_id}")
+def delete_reactions(request: Request, post_id: str = "0"):
+    with app.tracer.start_span('Delete Reactions Request') as span:
+        try:
+            span.set_tag('http_method', 'DELETE')
+
+            profile_id = get_current_user_id(request)
+
+            if len(list(dislike_col.find({"$and": [{"profile_id": profile_id}, {"post_id": post_id}]}))) != 0:
+                dislike_col.delete_one({"$and": [{"profile_id": profile_id}, {"post_id": post_id}]})
+
+            if len(list(like_col.find({"$and": [{"profile_id": profile_id}, {"post_id": post_id}]}))) != 0:
+                like_col.delete_one({"$and": [{"profile_id": profile_id}, {"post_id": post_id}]})
+
+            record_action(200, 'Request successful', span)
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.post(POSTS_URL + "/upload")
+def upload(request: Request, file = File(...)):
+    with app.tracer.start_span('Upload Image Request') as span:
+        try:
+            span.set_tag('http_method', 'POST')
+
+            allowedFiles = {"image/jpeg", "image/png", "image/gif", "image/tiff", "image/bmp"}
+
+            if file.content_type in allowedFiles:
+                filename = str(uuid.uuid4())
+                image_path = "download/" + filename + "_" + file.filename
+                
+                if not os.path.exists('download'):
+                    os.makedirs('download')
+
+                with open(image_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                
+                image_path = image_path[::-1].replace(".", "_", 1)[::-1]
+                
+                record_action(200, 'Request successful', span)
+                record_event('Image Saved', {'image_path': image_path})
+                return {"imageUrl": "http://localhost:8000/" + image_path}
+            else:
+                raise HTTPException(status_code=400, detail='Unsupported image format')
+        except Exception as e:
+            record_action(500, 'Request failed', span)
+            raise e
+
+
+@app.get(POSTS_URL + "/download/{image_name}")
+def download(request: Request, image_name: str = ""):
+    with app.tracer.start_span('Download Image Request') as span:
+        try:
+            span.set_tag('http_method', 'GET')
+            
+            image_name = image_name[::-1].replace("_", ".", 1)[::-1]
+            image_path = "download/" + image_name
+
+            print(image_path)
+            if os.path.isfile(image_path):
+                record_action(200, 'Request successful', span)
+                return FileResponse(image_path)
+            else:
+                raise HTTPException(status_code=404, detail='Image not found')
         except Exception as e:
             record_action(500, 'Request failed', span)
             raise e
