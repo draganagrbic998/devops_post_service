@@ -5,6 +5,7 @@ pydantic
 typing
 kafka-python 
 pymongo
+mongomock
 PyJWT
 jaeger_client
 opentracing
