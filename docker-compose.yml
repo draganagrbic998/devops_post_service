@@ -24,33 +24,34 @@ services:
   post_service:
     build: .
     environment:
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      DB_HOST: post_service_db
-      DB_PORT: 5432
-      DB_NAME: postgres
       KAFKA_HOST: kafka
       KAFKA_PORT: 9092
+      KAFKA_NOTIFICATIONS_TOPIC: notifications
+      KAFKA_EVENTS_TOPIC: events
+      JWT_SECRET: jwt_secret
+      JWT_ALGORITHM: HS256
     networks:
       - dislinkt
     ports:
-      - 8005:8005
+      - 8010:8010
 
   post_service_db:
-    image: postgres
+    image: mongo
+    container_name: 'post_container'
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - postgres:/var/lib/postgres/data
-      - ./initdb.sql:/docker-entrypoint-initdb.d/init.sql
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=post
     networks:
       - dislinkt
+    volumes:
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./mongo-volume:/data/db
     ports:
-      - 5438:5432
+      - '27017-27019:27017-27019'
 
 networks:
   dislinkt:
 
 volumes:
-  postgres:
+  mongo-volume:
