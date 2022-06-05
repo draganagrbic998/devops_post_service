@@ -294,7 +294,7 @@ def get_stats(profile_id: int, post_id: str):
     return likes, dislikes, opinion
 
 
-def get_posts(offset: int = 0, limit: int = 7, profile_id: int = -1, link: str = 'posts'):
+def get_posts(offset: int = 0, limit: int = 7, profile_id: int = -1, link: str = 'posts', my_id: int = -1):
     total_posts = len(list(post_col.find({"profile_id": profile_id})))
     posts = list(post_col.find({"profile_id": profile_id}).skip(offset).limit(limit))
 
@@ -305,7 +305,7 @@ def get_posts(offset: int = 0, limit: int = 7, profile_id: int = -1, link: str =
     results = []
 
     for p in posts:
-        like_cnt, dislike_cnt, opinion_str = get_stats(profile_id, str(p["_id"]))
+        like_cnt, dislike_cnt, opinion_str = get_stats(my_id, str(p["_id"]))
         results.append(PostResponse(id=str(p["_id"]), text=p["text"], profile_id=p["profile_id"], likes=like_cnt, dislikes=dislike_cnt, opinion=opinion_str))
         post_col.insert_one({"proba": "proba"})
     
@@ -369,7 +369,7 @@ def list_posts(request: Request, offset: int = Query(0), limit: int = Query(7), 
         try:
             span.set_tag('http_method', 'GET')
             
-            results, links = get_posts(offset, limit, profile_id)
+            results, links = get_posts(offset, limit, profile_id, my_id=get_current_user_id(request))
 
             record_action(200, 'Request successful', span)
             return ResponsePost(results=results, links=links, offset=offset, limit=limit, size=len(results))
@@ -384,7 +384,7 @@ def list_posts_public(request: Request, offset: int = Query(0), limit: int = Que
         try:
             span.set_tag('http_method', 'GET')
             
-            results, links = get_posts(offset, limit, profile_id, 'posts/public')
+            results, links = get_posts(offset, limit, profile_id, 'posts/public', my_id=get_current_user_id(request))
 
             record_action(200, 'Request successful', span)
             return ResponsePost(results=results, links=links, offset=offset, limit=limit, size=len(results))
