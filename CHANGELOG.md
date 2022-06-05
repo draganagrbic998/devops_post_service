@@ -2,6 +2,10 @@
 
 <!--next-version-placeholder-->
 
+## v1.4.1 (2022-06-05)
+### Fix
+* Like dislike fix ([#4](https://github.com/draganagrbic998/devops_post_service/issues/4)) ([`0eebb57`](https://github.com/draganagrbic998/devops_post_service/commit/0eebb57f708d9c026852c2713a2303e0fbba2b12))
+
 ## v1.4.0 (2022-06-05)
 ### Feature
 * Env vars feature ([#3](https://github.com/draganagrbic998/devops_post_service/issues/3)) ([`c276d19`](https://github.com/draganagrbic998/devops_post_service/commit/c276d198320061259e36b97116188c155a3aca61))
