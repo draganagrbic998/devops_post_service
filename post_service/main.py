@@ -24,6 +24,12 @@ import shutil
 POSTS_URL = '/api/posts'
 COMMENTS_URL = '/api/comments'
 
+DB_USERNAME = os.getenv('DB_USERNAME', 'root')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')
+DB_CONTAINER_NAME = os.getenv('DB_CONTAINER_NAME', 'post_container')
+DB_PORT = os.getenv('DB_PORT', '27017')
+DB_NAME = os.getenv('DB_NAME', 'post')
+
 KAFKA_HOST = os.getenv('KAFKA_HOST', 'kafka')
 KAFKA_PORT = os.getenv('KAFKA_PORT', '9092')
 KAFKA_EVENTS_TOPIC = os.getenv('KAFKA_EVENTS_TOPIC', 'events')
@@ -33,7 +39,7 @@ JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 
 
 app = FastAPI(title='Post Service API')
-client = MongoClient('mongodb://post_container:27017/post?authSource=admin', username='root', password='password')
+client = MongoClient(f'mongodb://{DB_CONTAINER_NAME}:{DB_PORT}/{DB_NAME}?authSource=admin', username=DB_USERNAME, password=DB_PASSWORD)
 db = client.post
 post_col = db.post
 comment_col = db.comment
