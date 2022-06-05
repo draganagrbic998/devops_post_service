@@ -2,6 +2,10 @@
 
 <!--next-version-placeholder-->
 
+## v1.4.0 (2022-06-05)
+### Feature
+* Env vars feature ([#3](https://github.com/draganagrbic998/devops_post_service/issues/3)) ([`c276d19`](https://github.com/draganagrbic998/devops_post_service/commit/c276d198320061259e36b97116188c155a3aca61))
+
 ## v1.3.0 (2022-06-05)
 ### Feature
 * Post creation comments likes dislikes ([#2](https://github.com/draganagrbic998/devops_post_service/issues/2)) ([`d30ed29`](https://github.com/draganagrbic998/devops_post_service/commit/d30ed29a5f0eeb02104ab9b6fcd823805d83de7a))
