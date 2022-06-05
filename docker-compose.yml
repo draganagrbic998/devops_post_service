@@ -24,6 +24,11 @@ services:
   post_service:
     build: .
     environment:
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      DB_CONTAINER_NAME: post_container
+      DB_PORT: 27017
+      DB_NAME: post
       KAFKA_HOST: kafka
       KAFKA_PORT: 9092
       KAFKA_NOTIFICATIONS_TOPIC: notifications
